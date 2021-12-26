@@ -32,9 +32,15 @@ func main() {
     err := lb.Add(lb.ServerOptions{
         // Sets the server weight, defaults to 1
         Weight:      5,
-        // Sets the number of unsuccessful attempts that should happen in the duration set by the fail_timeout parameter to consider the server unavailable for a duration also set by the fail_timeout parameter
+        // Sets the number of unsuccessful attempts that should happen in the duration
+        // set by the fail_timeout parameter to consider the server unavailable for a
+        // duration also set by the fail_timeout parameter
         MaxFails:    10,
+        // Also, when a server becomes unavailable, FailTimeout sets the time to wait
+        // to consider the server as available again
         FailTimeout: 10 * time.Seconds,
+        // A backup is a set of servers to use when all the primary ones becomes
+        // unavailable. Backup servers ignores MaxFails and FailTimeout parameters
         IsBackup:    false,
     }, info)
 
@@ -61,7 +67,8 @@ func main() {
     // Execute the request to the selected server using info.URL
     // ...
 
-    // Inform the load balancer manager if the access to that server was successful or not
+    // Inform the load balancer manager if the access to that server was successful
+    // or not
     if requestSucceeded {
         srv.SetOnline()
     } else {
