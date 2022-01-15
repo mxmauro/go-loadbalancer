@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // -----------------------------------------------------------------------------
@@ -31,9 +31,9 @@ func TestNoFail(t *testing.T) {
 
 		srvName, _ := srv.UserData().(string)
 		if (idx % serverTotalCount) < serverOneCount {
-			assert.Equal(t, serverOneName, srvName)
+			require.Equal(t, serverOneName, srvName)
 		} else {
-			assert.Equal(t, serverTwoName, srvName)
+			require.Equal(t, serverTwoName, srvName)
 		}
 
 		srv.SetOnline()
@@ -51,7 +51,7 @@ func TestFailAll(t *testing.T) {
 
 	// At this point next server should be none
 	srv := lb.Next()
-	assert.Equal(t, (*Server)(nil), srv)
+	require.Equal(t, (*Server)(nil), srv)
 }
 
 func TestBackup(t *testing.T) {
@@ -67,7 +67,7 @@ func TestBackup(t *testing.T) {
 	srv := lb.Next()
 
 	srvName, _ := srv.UserData().(string)
-	assert.Equal(t, backupServerName, srvName)
+	require.Equal(t, backupServerName, srvName)
 
 	srv.SetOffline() // NOTE: This call will act as a NO-OP
 }
@@ -83,7 +83,7 @@ func TestWait(t *testing.T) {
 
 	// At this point next server should be none
 	srv := lb.Next()
-	assert.Equal(t, (*Server)(nil), srv)
+	require.Equal(t, (*Server)(nil), srv)
 
 	// Wait until a server becomes available (after ~1sec)
 	ch := lb.WaitNext()
@@ -91,7 +91,7 @@ func TestWait(t *testing.T) {
 
 	// At this point server 2 should be online again
 	srvName, _ := srv.UserData().(string)
-	assert.Equal(t, srvName, serverTwoName)
+	require.Equal(t, srvName, serverTwoName)
 }
 
 // -----------------------------------------------------------------------------

@@ -13,7 +13,18 @@ type LoadBalancer struct {
 	primaryGroup       ServerGroup
 	backupGroup        ServerGroup
 	primaryOnlineCount int
+	eventHandlerMtx    sync.RWMutex
+	eventHandler       EventHandler
 }
+
+type EventHandler func(eventType int, server *Server)
+
+// -----------------------------------------------------------------------------
+
+const (
+	ServerUpEvent int = iota + 1
+	ServerDownEvent
+)
 
 const (
 	InvalidParamsErr = "invalid parameter"
@@ -31,8 +42,16 @@ func Create() *LoadBalancer {
 		backupGroup: ServerGroup{
 			srvList: make([]Server, 0),
 		},
+		eventHandlerMtx: sync.RWMutex{},
 	}
 	return &lb
+}
+
+// SetEventHandler sets a new notification handler callback
+func (lb *LoadBalancer) SetEventHandler(handler EventHandler) {
+	lb.eventHandlerMtx.Lock()
+	lb.eventHandler = handler
+	lb.eventHandlerMtx.Unlock()
 }
 
 // Add adds a new server to the list
@@ -42,7 +61,11 @@ func (lb *LoadBalancer) Add(opts ServerOptions, userData interface{}) error {
 		return errors.New(InvalidParamsErr)
 	}
 	if !opts.IsBackup {
-		if opts.MaxFails < 0 || opts.FailTimeout <= time.Duration(0) {
+		if opts.MaxFails > 0 {
+			if opts.FailTimeout <= time.Duration(0) {
+				return errors.New(InvalidParamsErr)
+			}
+		} else if opts.MaxFails < 0 {
 			return errors.New(InvalidParamsErr)
 		}
 	}
@@ -56,7 +79,7 @@ func (lb *LoadBalancer) Add(opts ServerOptions, userData interface{}) error {
 	if srv.opts.Weight == 0 {
 		srv.opts.Weight = 1
 	}
-	if opts.IsBackup {
+	if opts.IsBackup || srv.opts.MaxFails == 0 {
 		srv.opts.MaxFails = 0
 		srv.opts.FailTimeout = time.Duration(0)
 	}
@@ -89,21 +112,27 @@ func (lb *LoadBalancer) Add(opts ServerOptions, userData interface{}) error {
 
 // Next gets the next available server. It can return nil if no available server
 func (lb *LoadBalancer) Next() *Server {
+	var nextServer *Server
+
 	now := time.Now()
+
+	notifyUp := make([]*Server, 0) // NOTE: We would use defer, but they are executed LIFO
 
 	// Lock access
 	lb.mtx.Lock()
-	defer lb.mtx.Unlock()
 
 	// If all primary servers are offline, check if we can put someone up
 	if lb.primaryOnlineCount == 0 {
 		for idx := range lb.primaryGroup.srvList {
-			if now.After(lb.primaryGroup.srvList[idx].failTimestamp) {
-				// Put this server online again
-				lb.primaryGroup.srvList[idx].isDown = false
-				lb.primaryGroup.srvList[idx].failCounter = 0
+			srv := &lb.primaryGroup.srvList[idx]
 
+			if now.After(srv.failTimestamp) {
+				// Put this server online again
+				srv.isDown = false
+				srv.failCounter = 0
 				lb.primaryOnlineCount += 1
+
+				notifyUp = append(notifyUp, srv)
 			}
 		}
 	}
@@ -117,14 +146,17 @@ func (lb *LoadBalancer) Next() *Server {
 				// Set this server online again
 				srv.isDown = false
 				srv.lb.primaryOnlineCount += 1
+
+				notifyUp = append(notifyUp, srv)
 			}
 
 			if !srv.isDown && lb.primaryGroup.currServerWeight < srv.opts.Weight {
 				// Got a server!
 				lb.primaryGroup.currServerWeight += 1
 
-				// Done
-				return srv
+				// Select this server
+				nextServer = srv
+				break
 			}
 
 			// Advance to next server
@@ -137,8 +169,8 @@ func (lb *LoadBalancer) Next() *Server {
 		}
 	}
 
-	// If we reach here, there is no primary server available
-	if len(lb.backupGroup.srvList) > 0 {
+	// Look for backup servers if there is no primary available
+	if nextServer == nil && len(lb.backupGroup.srvList) > 0 {
 		for {
 			srv := &lb.backupGroup.srvList[lb.backupGroup.currServerIdx]
 
@@ -146,8 +178,9 @@ func (lb *LoadBalancer) Next() *Server {
 				// Got a server!
 				lb.backupGroup.currServerWeight += 1
 
-				// Done
-				return srv
+				// Select this server
+				nextServer = srv
+				break
 			}
 
 			// Advance to next server
@@ -160,8 +193,16 @@ func (lb *LoadBalancer) Next() *Server {
 		}
 	}
 
-	// No available server
-	return nil
+	// Unlock access
+	lb.mtx.Unlock()
+
+	// Call event callback
+	for _, srv := range notifyUp {
+		lb.raiseEvent(ServerUpEvent, srv)
+	}
+
+	// Done
+	return nextServer
 }
 
 // WaitNext returns a channel that is fulfilled with the next available server
@@ -226,4 +267,15 @@ func (lb *LoadBalancer) WaitNext() (ch chan *Server) {
 	}()
 
 	return
+}
+
+// -----------------------------------------------------------------------------
+// Private methods
+
+func (lb *LoadBalancer) raiseEvent(eventType int, server *Server) {
+	lb.eventHandlerMtx.RLock()
+	if lb.eventHandler != nil {
+		lb.eventHandler(eventType, server)
+	}
+	lb.eventHandlerMtx.RUnlock()
 }

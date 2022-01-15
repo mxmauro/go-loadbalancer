@@ -46,9 +46,10 @@ func (srv *Server) SetOnline() {
 		return
 	}
 
+	notifyUp := false
+
 	// Lock access
 	srv.lb.mtx.Lock()
-	defer srv.lb.mtx.Unlock()
 
 	// Reset the failure counter
 	srv.failCounter = 0
@@ -57,6 +58,16 @@ func (srv *Server) SetOnline() {
 	if srv.isDown {
 		srv.isDown = false
 		srv.lb.primaryOnlineCount += 1
+
+		notifyUp = true
+	}
+
+	// Unlock access
+	srv.lb.mtx.Unlock()
+
+	// Call event callback
+	if notifyUp {
+		srv.lb.raiseEvent(ServerUpEvent, srv)
 	}
 }
 
@@ -67,9 +78,10 @@ func (srv *Server) SetOffline() {
 		return
 	}
 
+	notifyDown := false
+
 	// Lock access
 	srv.lb.mtx.Lock()
-	defer srv.lb.mtx.Unlock()
 
 	// If server is up
 	if !srv.isDown && srv.failCounter < srv.opts.MaxFails {
@@ -94,8 +106,17 @@ func (srv *Server) SetOffline() {
 		if srv.failCounter == srv.opts.MaxFails {
 			srv.isDown = true
 			srv.failTimestamp = now.Add(srv.opts.FailTimeout)
-
 			srv.lb.primaryOnlineCount -= 1
+
+			notifyDown = true
 		}
+	}
+
+	// Unlock access
+	srv.lb.mtx.Unlock()
+
+	// Call event callback
+	if notifyDown {
+		srv.lb.raiseEvent(ServerDownEvent, srv)
 	}
 }
