@@ -81,5 +81,5 @@ func main() {
 }
 ```
 
-## Lincese
+## License
 See `LICENSE` file for details.
