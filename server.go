@@ -6,13 +6,7 @@ import (
 
 // -----------------------------------------------------------------------------
 
-type ServerOptions struct {
-	Weight      int
-	MaxFails    int
-	FailTimeout time.Duration
-	IsBackup    bool
-}
-
+// Server represents an upstream server in a load balancer.
 type Server struct {
 	lb          *LoadBalancer // NOTE: Go's Mark & Sweep plays well with this circular reference
 	opts        ServerOptions
@@ -26,10 +20,19 @@ type Server struct {
 	userData      interface{}
 }
 
+// ServerGroup is a group of servers. Used to classify and track primary and backup servers.
 type ServerGroup struct {
 	srvList          []Server
 	currServerIdx    int
 	currServerWeight int
+}
+
+// ServerOptions specifies details about a server.
+type ServerOptions struct {
+	Weight      int
+	MaxFails    int
+	FailTimeout time.Duration
+	IsBackup    bool
 }
 
 // -----------------------------------------------------------------------------

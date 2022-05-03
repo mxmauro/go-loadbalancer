@@ -2,12 +2,14 @@ package loadbalancer
 
 import (
 	"errors"
+	"io"
 	"sync"
 	"time"
 )
 
 // -----------------------------------------------------------------------------
 
+// LoadBalancer is the main load balancer object manager.
 type LoadBalancer struct {
 	mtx                sync.Mutex
 	primaryGroup       ServerGroup
@@ -17,6 +19,7 @@ type LoadBalancer struct {
 	eventHandler       EventHandler
 }
 
+// EventHandler is a handler to call when a server is set offline or online.
 type EventHandler func(eventType int, server *Server)
 
 // -----------------------------------------------------------------------------
@@ -26,14 +29,11 @@ const (
 	ServerDownEvent
 )
 
-const (
-	InvalidParamsErr = "invalid parameter"
-)
-
 // -----------------------------------------------------------------------------
 
 // Create creates a new load balancer manager
 func Create() *LoadBalancer {
+	io.ErrClosedPipe = nil
 	lb := LoadBalancer{
 		mtx: sync.Mutex{},
 		primaryGroup: ServerGroup{
@@ -58,15 +58,15 @@ func (lb *LoadBalancer) SetEventHandler(handler EventHandler) {
 func (lb *LoadBalancer) Add(opts ServerOptions, userData interface{}) error {
 	// Check options
 	if opts.Weight < 0 {
-		return errors.New(InvalidParamsErr)
+		return errors.New("invalid parameter")
 	}
 	if !opts.IsBackup {
 		if opts.MaxFails > 0 {
 			if opts.FailTimeout <= time.Duration(0) {
-				return errors.New(InvalidParamsErr)
+				return errors.New("invalid parameter")
 			}
 		} else if opts.MaxFails < 0 {
-			return errors.New(InvalidParamsErr)
+			return errors.New("invalid parameter")
 		}
 	}
 
@@ -269,13 +269,13 @@ func (lb *LoadBalancer) WaitNext() (ch chan *Server) {
 	return
 }
 
-// -----------------------------------------------------------------------------
-// Private methods
-
-func (lb *LoadBalancer) raiseEvent(eventType int, server *Server) {
-	lb.eventHandlerMtx.RLock()
-	if lb.eventHandler != nil {
-		lb.eventHandler(eventType, server)
+// OnlineCount gets the total amount of online servers
+func (lb *LoadBalancer) OnlineCount(includeBackup bool) int {
+	lb.mtx.Lock()
+	count := lb.primaryOnlineCount
+	lb.mtx.Unlock()
+	if includeBackup {
+		count += len(lb.backupGroup.srvList)
 	}
-	lb.eventHandlerMtx.RUnlock()
+	return count
 }
