@@ -20,19 +20,30 @@ type Server struct {
 	userData      interface{}
 }
 
+// ServerOptions specifies the weight, fail timeout and other options of a server.
+type ServerOptions struct {
+	// Weight
+	Weight int
+
+	// Maximum amount of unsuccessful attempts to reach the server that must happen in the time frame specified by the
+	// FailTimeout parameter before setting it offline. The FailTimeout must be also specified. A value of zero
+	// means the server will never go offline.
+	MaxFails int
+
+	// Fail timeout sets the time period where MaxFails unsuccessful attempts must happen in order to set a server
+	// offline. Once the server becomes offline, MaxFails indicates how much time should pass before putting the server
+	// online again.
+	FailTimeout time.Duration
+
+	// Indicates if this server must be used as a backup fail over. Backup servers never goes offline.
+	IsBackup bool
+}
+
 // ServerGroup is a group of servers. Used to classify and track primary and backup servers.
 type ServerGroup struct {
 	srvList          []Server
 	currServerIdx    int
 	currServerWeight int
-}
-
-// ServerOptions specifies details about a server.
-type ServerOptions struct {
-	Weight      int
-	MaxFails    int
-	FailTimeout time.Duration
-	IsBackup    bool
 }
 
 // -----------------------------------------------------------------------------

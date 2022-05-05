@@ -11,12 +11,22 @@ import (
 	balancer "github.com/randlabs/go-loadbalancer"
 )
 
+// IMPORTANT NOTE: Most load-balanced http client libraries makes use of the RoundTripper object but we don't.
+//
+// The major reason for this is we want to allow the dev, to be able to mark a server (temporary) offline or retry
+// the operation not only if the server responds but also depending on the response.
+//
+// For e.g., let's say your backend correctly answers a request but the output indicates the internal processing is not
+// up-to-date, then you can decide to stop using that server until it is.
+
 // -----------------------------------------------------------------------------
 
 const (
 	ServerUpEvent int = iota + 1
 	ServerDownEvent
 )
+
+// -----------------------------------------------------------------------------
 
 var ErrCanceled = errors.New("canceled")
 var ErrTimeout = errors.New("timeout")
@@ -39,7 +49,13 @@ type SourceState struct {
 }
 
 // SourceOptions specifies details about a source.
-type SourceOptions balancer.ServerOptions
+type SourceOptions struct {
+	ServerOptions
+	Headers map[string]string
+}
+
+// ServerOptions references a load-balanced server options.
+type ServerOptions balancer.ServerOptions
 
 // EventHandler is a handler for load balancer events.
 type EventHandler func(eventType int, source *Source, err error)
@@ -72,7 +88,7 @@ func CreateWithTransport(transport *http.Transport) *HttpClient {
 }
 
 // AddSource adds a new source to the load-balanced http client object.
-func (c *HttpClient) AddSource(baseURL string, headers map[string]string, opts SourceOptions) error {
+func (c *HttpClient) AddSource(baseURL string, opts SourceOptions) error {
 	// Check base url
 	match, _ := regexp.MatchString(`https?://([^:/?#]+)(:\d+)?/?$`, baseURL)
 	if !match {
@@ -93,14 +109,16 @@ func (c *HttpClient) AddSource(baseURL string, headers map[string]string, opts S
 		lastErrorMtx: sync.RWMutex{},
 		lastError:    nil,
 	}
-	for k,v := range headers {
-		src.headers[k] = v
+	if opts.Headers != nil {
+		for k, v := range opts.Headers {
+			src.headers[k] = v
+		}
 	}
 
 	c.sources = append(c.sources, src)
 
 	// Add source to the load balancer
-	err := c.lb.Add(balancer.ServerOptions(opts), src)
+	err := c.lb.Add(balancer.ServerOptions(opts.ServerOptions), src)
 	if err != nil {
 		// On error, remove the source from the source list
 		c.sources = c.sources[0:len(c.sources)-1]

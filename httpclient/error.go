@@ -27,23 +27,14 @@ type Error struct {
 
 // -----------------------------------------------------------------------------
 
-func (c *HttpClient) buildError(src *Source, wrappedErr error, message string, url string, statusCode int) *Error {
-	e := &Error{
+func (c *HttpClient) newError(wrappedErr error, message string, url string, statusCode int) *Error {
+	err := Error{
 		message:    message,
 		url:        url,
 		statusCode: statusCode,
 		err:        wrappedErr,
 	}
-	if message == TimeoutErr {
-		e.errType = errorTypeIsTimeout
-	} else if message == CanceledErr {
-		e.errType = errorTypeIsCanceled
-	}
-
-	if src != nil {
-		src.setLastError(e)
-	}
-	return e
+	return &err
 }
 
 // -----------------------------------------------------------------------------

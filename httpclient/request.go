@@ -9,16 +9,19 @@ import (
 
 // -----------------------------------------------------------------------------
 
+// Request represents a load-balanced http client request object.
 type Request struct {
-	client   *HttpClient
 	Method   string
 	Resource string
 	Header   http.Header
 	Body     io.Reader
+
+	client   *HttpClient
 }
 
 // -----------------------------------------------------------------------------
 
+// NewRequest creates a new http client request
 func (c *HttpClient) NewRequest(method string, resourceUrl string) *Request {
 	req := Request{
 		client:   c,
@@ -29,19 +32,21 @@ func (c *HttpClient) NewRequest(method string, resourceUrl string) *Request {
 	return &req
 }
 
+// SetBody sets the body of a http client request
 func (req *Request) SetBody(body io.Reader) {
 	req.Body = body
 }
 
+// SetBodyBytes sets the body of a http client request
 func (req *Request) SetBodyBytes(body []byte) {
 	if body != nil {
-		req.Body = bytes.NewReader(body)
+		req.SetBody(bytes.NewReader(body))
 	} else {
 		req.Body = nil
 	}
 }
 
-func (req *Request) Exec(ctx context.Context, cb QueryCallback) error {
+// Exec runs the http client request
+func (req *Request) Exec(ctx context.Context, cb ExecCallback) error {
 	return req.client.exec(ctx, cb, req)
 }
-
