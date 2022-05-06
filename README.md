@@ -2,7 +2,7 @@
 
 A round-robin server selection (aka load balancer) library.
 
-**IMPORTANT NOTE**: This library DOES NOT DO any kind of networking. It aims to automatically select an upstream handler in a set of primary and backup configured servers.
+The base code of this library, the balancer, *DOES NOT DO* any kind of network access. It's goal is to automatically select an upstream handler in a set of primary and backup configured servers.
 
 ## Usage with example
 
@@ -78,6 +78,62 @@ func main() {
     // We can also use channels to wait until a server becomes available
     ch := lb.WaitNext()
     srv = <-ch
+}
+```
+
+## httpclient
+
+The `httpclient` module, implements an alternative to `http.Client` that allows to use a set of servers and balance
+requests among them.
+
+> Most load-balanced http client libraries makes use of the `RoundTripper` interface, but we don't.
+>
+> The major reason for this is we want to allow the dev, to be able to mark a server (temporarily) offline or retry
+> the operation, not only if connection to the server is established, but also depending on the response.
+>
+> For e.g., let's say your backend correctly answers a request but the output indicates the internal processing is not
+> up-to-date, then you can decide to stop using that server until it is.
+
+### Usage:
+
+```golang
+import (
+    "fmt"
+
+    balancer "github.com/randlabs/go-loadbalancer"
+)
+
+func main() {
+    hc := httpclient.Create()
+    _ = hc.AddSource("https://server1.test-network", httpclient.SourceOptions{
+        ServerOptions: httpclient.ServerOptions{
+            Weight:      1,
+            MaxFails:    1,
+            FailTimeout: 10 * time.Second,
+        },
+    })
+    _ = hc.AddSource("https://server2.test-network", httpclient.SourceOptions{
+        ServerOptions: httpclient.ServerOptions{
+            Weight:      1,
+            MaxFails:    1,
+            FailTimeout: 10 * time.Second,
+        },
+    })
+
+    req := hc.NewRequest("GET", "/api-test")
+    err := req.Exec(context.Background(), func (ctx context.Context, res httpclient.Response) error {
+        if res.Err() != nil || res.StatusCode != 200 {
+            // Retry on the next available server on failed request
+            res.RetryOnNextServer()
+            return nil
+        }
+
+        // Process response
+        // ...
+
+        // Done
+        return nil
+    })
 }
 ```
 
