@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/randlabs/go-loadbalancer"
 	"github.com/randlabs/go-loadbalancer/httpclient"
 )
 
@@ -194,30 +195,32 @@ func createTestEnvironment(t *testing.T) (*MockServer, *MockServer, *httpclient.
 	server2 := createMockTimestampServer("server2")
 
 	hc := httpclient.Create()
-	err := hc.AddSource(server1.URL(), httpclient.SourceOptions{
-		ServerOptions: httpclient.ServerOptions{
+	err := hc.AddSource(
+		server1.URL(),
+		map[string][]string{
+			"x-expected-server": { "server1" },
+		},
+		loadbalancer.ServerOptions{
 			Weight:   1,
 			MaxFails: 1,
 			FailTimeout: 10 * time.Second,
 		},
-		Headers: map[string]string{
-			"x-expected-server": "server1",
-		},
-	})
+	)
 	if err != nil {
 		t.Fatalf("unable to add source to load balancer [err=%v]", err.Error())
 	}
 
-	err = hc.AddSource(server2.URL(), httpclient.SourceOptions{
-		ServerOptions: httpclient.ServerOptions{
+	err = hc.AddSource(
+		server2.URL(),
+		map[string][]string{
+			"x-expected-server": { "server2" },
+		},
+		loadbalancer.ServerOptions{
 			Weight:   1,
 			MaxFails: 1,
 			FailTimeout: 10 * time.Second,
 		},
-		Headers: map[string]string{
-			"x-expected-server": "server2",
-		},
-	})
+	)
 	if err != nil {
 		t.Fatalf("unable to add source to load balancer [err=%v]", err.Error())
 	}

@@ -5,10 +5,9 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
-	balancer "github.com/randlabs/go-loadbalancer"
+	"github.com/randlabs/go-loadbalancer"
 )
 
 // -----------------------------------------------------------------------------
@@ -16,6 +15,8 @@ import (
 const (
 	ServerUpEvent int = iota + 1
 	ServerDownEvent
+	RequestSuceededEvent
+	RequestFailedEvent
 )
 
 // -----------------------------------------------------------------------------
@@ -27,30 +28,21 @@ var ErrTimeout = errors.New("timeout")
 
 // HttpClient is a load-balancer http client requester object.
 type HttpClient struct {
-	lb           *balancer.LoadBalancer
+	lb            *loadbalancer.LoadBalancer
 	transport    *http.Transport
-	eventHandler EventHandler
 	sources      []*Source
+	eventHandler EventHandler
 }
 
 // SourceState indicates the state of a server.
 type SourceState struct {
 	BaseURL   string
-	IsBackup  bool
+	IsOnline  bool
 	LastError error
+	IsBackup  bool
 }
 
-// SourceOptions specifies details about a source.
-type SourceOptions struct {
-	ServerOptions
-	Headers map[string]string
-}
-
-// ServerOptions references a load-balanced server options.
-type ServerOptions balancer.ServerOptions
-
-// EventHandler is a handler for load balancer events.
-type EventHandler func(eventType int, source *Source, err error)
+type EventHandler func(eventType int, sourceId int, err error)
 
 // -----------------------------------------------------------------------------
 
@@ -69,7 +61,7 @@ func Create() *HttpClient {
 // CreateWithTransport creates a load-balanced http client requester object that uses the specified transport.
 func CreateWithTransport(transport *http.Transport) *HttpClient {
 	c := HttpClient{
-		lb:        balancer.Create(),
+		lb:        loadbalancer.Create(),
 		transport: transport.Clone(),
 		sources:   make([]*Source, 0),
 	}
@@ -80,7 +72,7 @@ func CreateWithTransport(transport *http.Transport) *HttpClient {
 }
 
 // AddSource adds a new source to the load-balanced http client object.
-func (c *HttpClient) AddSource(baseURL string, opts SourceOptions) error {
+func (c *HttpClient) AddSource(baseURL string, header http.Header, opts loadbalancer.ServerOptions) error {
 	// Check base url
 	match, _ := regexp.MatchString(`https?://([^:/?#]+)(:\d+)?/?$`, baseURL)
 	if !match {
@@ -93,24 +85,11 @@ func (c *HttpClient) AddSource(baseURL string, opts SourceOptions) error {
 	}
 
 	// Add source to list
-	src := &Source{
-		id:           len(c.sources) + 1,
-		baseURL:      baseURL,
-		headers:      make(map[string]string),
-		isBackup:     opts.IsBackup,
-		lastErrorMtx: sync.RWMutex{},
-		lastError:    nil,
-	}
-	if opts.Headers != nil {
-		for k, v := range opts.Headers {
-			src.headers[k] = v
-		}
-	}
-
+	src := newSource(len(c.sources) + 1, baseURL, header, opts.IsBackup)
 	c.sources = append(c.sources, src)
 
 	// Add source to the load balancer
-	err := c.lb.Add(balancer.ServerOptions(opts.ServerOptions), src)
+	err := c.lb.Add(opts, src)
 	if err != nil {
 		// On error, remove the source from the source list
 		c.sources = c.sources[0:len(c.sources)-1]
@@ -133,10 +112,17 @@ func (c *HttpClient) SourceState(index int) *SourceState {
 	}
 	ss := SourceState{
 		BaseURL:   c.sources[index].BaseURL(),
-		IsBackup:  c.sources[index].IsBackup(),
+		IsOnline:  c.sources[index].IsOnline(),
 		LastError: c.sources[index].Err(),
+		IsBackup:  c.sources[index].IsBackup(),
 	}
 	return &ss
+}
+
+// SourceStateByID retrieves source details for the given source ID
+func (c *HttpClient) SourceStateByID(id int) *SourceState {
+	// Actually the ID is the index plus one
+	return c.SourceState(id - 1)
 }
 
 // SetEventHandler sets a new notification handler callback

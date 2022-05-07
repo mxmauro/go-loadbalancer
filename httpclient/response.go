@@ -17,6 +17,7 @@ type Response struct {
 	*http.Response
 
 	fullUrl         string
+	source          *Source
 	retryCount      int
 	err             error
 	upstreamOffline *bool
@@ -48,4 +49,14 @@ func (res *Response) SetOffline() {
 // RetryOnNextServer indicates the request must be retried on the next available server.
 func (res *Response) RetryOnNextServer() {
 	*res.retry = true
+}
+
+
+// SourceID indicates the request must be retried on the next available server.
+func (res *Response) SourceID() int {
+	return res.source.ID()
+}
+// SourceBaseURL
+func (res *Response) SourceBaseURL() string {
+	return res.source.baseURL
 }

@@ -13,8 +13,6 @@ import (
 
 // -----------------------------------------------------------------------------
 
-// -----------------------------------------------------------------------------
-
 const (
 	defaultTimeout = 20 * time.Second
 
@@ -100,9 +98,7 @@ func (c *HttpClient) exec(parentCtx context.Context, cb ExecCallback, req *Reque
 		}
 
 		// Add load balancer source headers
-		for k, v := range src.headers {
-			httpreq.Header.Set(k, v)
-		}
+		httpreq.Header = src.header.Clone()
 
 		// Add request headers
 		for k, v := range req.Header {
@@ -132,6 +128,7 @@ func (c *HttpClient) exec(parentCtx context.Context, cb ExecCallback, req *Reque
 		retry := false
 		execResult := Response{
 			fullUrl:         url,
+			source:          src,
 			retryCount:      retryCounter,
 			upstreamOffline: &upstreamOffline,
 			retry:           &retry,
@@ -144,10 +141,12 @@ func (c *HttpClient) exec(parentCtx context.Context, cb ExecCallback, req *Reque
 
 			if errors.Is(err, context.DeadlineExceeded) {
 				// Deadline exceeded?
-				srv.SetOffline()
-
-				err = ErrTimeout
-			} else if errors.As(err, &netErr); netErr.Timeout() {
+				if cancelCtx != nil {
+					cancelCtx() // To avoid defer calling inside a for loop and warnings, we call it here
+				}
+				return ErrTimeout
+			}
+			if errors.As(err, &netErr); netErr.Timeout() {
 				// Network timeout?
 				srv.SetOffline()
 
@@ -166,23 +165,27 @@ func (c *HttpClient) exec(parentCtx context.Context, cb ExecCallback, req *Reque
 			}
 		}
 
-		// To avoid defer calling inside a for loop and warnings, we call it here
-		if cancelCtx != nil {
-			cancelCtx()
-		}
-
 		// Set error in callback
 		execResult.err = err
 
 		// Call the callback
 		err = cb(parentCtx, execResult)
 
+		// To avoid defer calling inside a for loop and warnings, we call it here
+		if cancelCtx != nil {
+			cancelCtx()
+		}
+
 		// Close the response body if one exist
 		if execResult.Response != nil {
 			_ = execResult.Response.Body.Close()
 		}
+
 		// Set the last error (even success)
 		src.setLastError(err)
+
+		// Raise callbak
+		c.raiseRequestEvent(srv, err)
 
 		// Set server online/offline based on the callback response
 		if !upstreamOffline {
