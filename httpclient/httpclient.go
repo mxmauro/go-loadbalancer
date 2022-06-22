@@ -80,9 +80,7 @@ func (c *HttpClient) AddSource(baseURL string, header http.Header, opts loadbala
 	}
 
 	// Remove trailing slash
-	if strings.HasSuffix(baseURL, "/") {
-		baseURL = baseURL[0 : len(baseURL)-1]
-	}
+	baseURL = strings.TrimSuffix(baseURL, "/")
 
 	// Add source to list
 	src := newSource(len(c.sources) + 1, baseURL, header, opts.IsBackup)

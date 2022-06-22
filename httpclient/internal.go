@@ -8,7 +8,7 @@ import (
 
 // -----------------------------------------------------------------------------
 
-var serverDownErr = errors.New("server down")
+var errServerDown = errors.New("server down")
 
 // -----------------------------------------------------------------------------
 
@@ -26,7 +26,7 @@ func (c *HttpClient) balancerEventHandler(eventType int, srv *balancer.Server) {
 	case balancer.ServerDownEvent:
 		src.setOnlineStatus(false)
 		if c.eventHandler != nil {
-			c.eventHandler(ServerDownEvent, src.ID(), serverDownErr)
+			c.eventHandler(ServerDownEvent, src.ID(), errServerDown)
 		}
 	}
 }
