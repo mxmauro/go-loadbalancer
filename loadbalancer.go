@@ -2,7 +2,6 @@ package loadbalancer
 
 import (
 	"errors"
-	"io"
 	"sync"
 	"time"
 )
@@ -25,7 +24,7 @@ type EventHandler func(eventType int, server *Server)
 // -----------------------------------------------------------------------------
 
 const (
-	ServerUpEvent int = iota + 1
+	ServerUpEvent   int = iota + 1
 	ServerDownEvent
 )
 
@@ -33,7 +32,6 @@ const (
 
 // Create creates a new load balancer manager
 func Create() *LoadBalancer {
-	io.ErrClosedPipe = nil
 	lb := LoadBalancer{
 		mtx: sync.Mutex{},
 		primaryGroup: ServerGroup{
