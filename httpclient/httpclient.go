@@ -15,7 +15,7 @@ import (
 const (
 	ServerUpEvent int = iota + 1
 	ServerDownEvent
-	RequestSuceededEvent
+	RequestSucceededEvent
 	RequestFailedEvent
 )
 

@@ -35,7 +35,7 @@ func (c *HttpClient) raiseRequestEvent(srv *balancer.Server, err error) {
 	if c.eventHandler != nil {
 		src := srv.UserData().(*Source)
 		if err == nil {
-			c.eventHandler(RequestSuceededEvent, src.ID(), nil)
+			c.eventHandler(RequestSucceededEvent, src.ID(), nil)
 		} else {
 			c.eventHandler(RequestFailedEvent, src.ID(), err)
 		}
