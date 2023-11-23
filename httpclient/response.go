@@ -51,12 +51,12 @@ func (res *Response) RetryOnNextServer() {
 	*res.retry = true
 }
 
-
 // SourceID indicates the request must be retried on the next available server.
 func (res *Response) SourceID() int {
 	return res.source.ID()
 }
-// SourceBaseURL
+
+// SourceBaseURL returns the base URL to use.
 func (res *Response) SourceBaseURL() string {
 	return res.source.baseURL
 }

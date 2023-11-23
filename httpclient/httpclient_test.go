@@ -5,15 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/randlabs/go-loadbalancer"
-	"github.com/randlabs/go-loadbalancer/httpclient"
+	"github.com/randlabs/go-loadbalancer/v2"
+	"github.com/randlabs/go-loadbalancer/v2/httpclient"
 )
 
 // -----------------------------------------------------------------------------
@@ -32,34 +32,38 @@ func TestHttpClient(t *testing.T) {
 	defer server2.Destroy()
 
 	// We have to get the correct response from each server
-	req := hc.NewRequest("GET", "/test")
-	err := req.Exec(context.Background(), func (ctx context.Context, res httpclient.Response) error {
-		if res.StatusCode != 200 {
-			return fmt.Errorf("unexpected status code %v", res.StatusCode)
-		}
-		if res.Header.Get("x-server") != "server1" {
-			return errors.New("expected server to be `server1`")
-		}
+	err := hc.NewRequest(context.Background(), "/test").
+		Method("GET").
+		Callback(func (ctx context.Context, res httpclient.Response) error {
+			if res.StatusCode != 200 {
+				return fmt.Errorf("unexpected status code %v", res.StatusCode)
+			}
+			if res.Header.Get("x-server") != "server1" {
+				return errors.New("expected server to be `server1`")
+			}
 
-		// Done
-		return nil
-	})
+			// Done
+			return nil
+		}).
+		Exec()
 	if err != nil {
 		t.Fatal(err.Error())
 	}
 
-	req = hc.NewRequest("GET", "/test")
-	err = req.Exec(context.Background(), func (ctx context.Context, res httpclient.Response) error {
-		if res.StatusCode != 200 {
-			return fmt.Errorf("unexpected status code %v", res.StatusCode)
-		}
-		if res.Header.Get("x-server") != "server2" {
-			return errors.New("expected server to be `server2`")
-		}
+	err = hc.NewRequest(context.Background(), "/test").
+		Method("GET").
+		Callback(func (ctx context.Context, res httpclient.Response) error {
+			if res.StatusCode != 200 {
+				return fmt.Errorf("unexpected status code %v", res.StatusCode)
+			}
+			if res.Header.Get("x-server") != "server2" {
+				return errors.New("expected server to be `server2`")
+			}
 
-		// Done
-		return nil
-	})
+			// Done
+			return nil
+		}).
+		Exec()
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -72,55 +76,61 @@ func TestHttpClientFailFirst(t *testing.T) {
 	defer server2.Destroy()
 
 	// Do a request and assume it is not up-to-date, so we put it offline
-	req := hc.NewRequest("GET", "/test")
-	err := req.Exec(context.Background(), func (ctx context.Context, res httpclient.Response) error {
-		if res.StatusCode != 200 {
-			return fmt.Errorf("unexpected status code %v", res.StatusCode)
-		}
-		if res.Header.Get("x-server") != "server1" {
-			return errors.New("expected server to be `server1`")
-		}
+	err := hc.NewRequest(context.Background(), "/test").
+		Method("GET").
+		Callback(func (ctx context.Context, res httpclient.Response) error {
+			if res.StatusCode != 200 {
+				return fmt.Errorf("unexpected status code %v", res.StatusCode)
+			}
+			if res.Header.Get("x-server") != "server1" {
+				return errors.New("expected server to be `server1`")
+			}
 
-		// Set this server offline
-		res.SetOffline()
+			// Set this server offline
+			res.SetOffline()
 
-		// Done
-		return nil
-	})
+			// Done
+			return nil
+		}).
+		Exec()
 	if err != nil {
 		t.Fatal(err.Error())
 	}
 
 	// Now we have to get a response from the second server
-	req = hc.NewRequest("GET", "/test")
-	err = req.Exec(context.Background(), func (ctx context.Context, res httpclient.Response) error {
-		if res.StatusCode != 200 {
-			return fmt.Errorf("unexpected status code %v", res.StatusCode)
-		}
-		if res.Header.Get("x-server") != "server2" {
-			return errors.New("expected server to be `server2`")
-		}
+	err = hc.NewRequest(context.Background(), "/test").
+		Method("GET").
+		Callback(func (ctx context.Context, res httpclient.Response) error {
+			if res.StatusCode != 200 {
+				return fmt.Errorf("unexpected status code %v", res.StatusCode)
+			}
+			if res.Header.Get("x-server") != "server2" {
+				return errors.New("expected server to be `server2`")
+			}
 
-		// Done
-		return nil
-	})
+			// Done
+			return nil
+		}).
+		Exec()
 	if err != nil {
 		t.Fatal(err.Error())
 	}
 
 	// Because the first server is offline, again we have to get a response from the second server
-	req = hc.NewRequest("GET", "/test")
-	err = req.Exec(context.Background(), func (ctx context.Context, res httpclient.Response) error {
-		if res.StatusCode != 200 {
-			return fmt.Errorf("unexpected status code %v", res.StatusCode)
-		}
-		if res.Header.Get("x-server") != "server2" {
-			return errors.New("expected server to be `server2`")
-		}
+	err = hc.NewRequest(context.Background(), "/test").
+		Method("GET").
+		Callback(func (ctx context.Context, res httpclient.Response) error {
+			if res.StatusCode != 200 {
+				return fmt.Errorf("unexpected status code %v", res.StatusCode)
+			}
+			if res.Header.Get("x-server") != "server2" {
+				return errors.New("expected server to be `server2`")
+			}
 
-		// Done
-		return nil
-	})
+			// Done
+			return nil
+		}).
+		Exec()
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -133,55 +143,57 @@ func TestHttpClientPostRetry(t *testing.T) {
 	defer server2.Destroy()
 
 	// Do a request and assume it is not up-to-date, so we put it offline
-	req := hc.NewRequest("POST", "/bodytest")
-	req.SetBodyBytes([]byte("this is a sample body"))
-	err := req.Exec(context.Background(), func (ctx context.Context, res httpclient.Response) error {
-		if res.StatusCode != 200 {
-			return fmt.Errorf("unexpected status code %v", res.StatusCode)
-		}
-
-		retryCount := res.RetryCount()
-		switch retryCount {
-		case 0:
-			fallthrough
-		case 2:
-			if res.Header.Get("x-server") != "server1" {
-				return errors.New("expected server to be `server1`")
+	err := hc.NewRequest(context.Background(), "/bodytest").
+		Method("POST").
+		BodyBytes([]byte("this is a sample body")).
+		Callback(func (ctx context.Context, res httpclient.Response) error {
+			if res.StatusCode != 200 {
+				return fmt.Errorf("unexpected status code %v", res.StatusCode)
 			}
 
-			// Retry on the next available server
-			res.RetryOnNextServer()
+			retryCount := res.RetryCount()
+			switch retryCount {
+			case 0:
+				fallthrough
+			case 2:
+				if res.Header.Get("x-server") != "server1" {
+					return errors.New("expected server to be `server1`")
+				}
 
-		case 1:
-			fallthrough
-		case 3:
-			if res.Header.Get("x-server") != "server2" {
-				return errors.New("expected server to be `server2`")
+				// Retry on the next available server
+				res.RetryOnNextServer()
+
+			case 1:
+				fallthrough
+			case 3:
+				if res.Header.Get("x-server") != "server2" {
+					return errors.New("expected server to be `server2`")
+				}
+
+				// Retry on the next available server
+				res.RetryOnNextServer()
+
+			case 4:
+				// When we hit the fourth retry, check if the body was received correctly
+				// by inspecting the expected response.
+				m := make(map[string]interface{})
+				err := json.NewDecoder(res.Body).Decode(&m)
+				if err != nil {
+					return err
+				}
+				body, ok := m["received-body"]
+				if !ok {
+					return errors.New("received-body not present")
+				}
+				if body.(string) != "this is a sample body" {
+					return errors.New("received-body mismatch")
+				}
 			}
 
-			// Retry on the next available server
-			res.RetryOnNextServer()
-
-		case 4:
-			// When we hit the fourth retry, check if the body was received correctly
-			// by inspecting the expected response.
-			m := make(map[string]interface{})
-			err := json.NewDecoder(res.Body).Decode(&m)
-			if err != nil {
-				return err
-			}
-			body, ok := m["received-body"]
-			if !ok {
-				return errors.New("received-body not present")
-			}
-			if body.(string) != "this is a sample body" {
-				return errors.New("received-body mismatch")
-			}
-		}
-
-		// Done
-		return nil
-	})
+			// Done
+			return nil
+		}).
+		Exec()
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -262,7 +274,7 @@ func createMockTimestampServer(serverName string) *MockServer {
 
 		case "POST":
 			if r.URL.Path == "/bodytest" && r.Body != nil {
-				body, err := ioutil.ReadAll(r.Body)
+				body, err := io.ReadAll(r.Body)
 				if err != nil {
 					w.WriteHeader(http.StatusInternalServerError)
 					_, _ = w.Write([]byte("error: " + err.Error()))

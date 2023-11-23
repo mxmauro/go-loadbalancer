@@ -17,7 +17,7 @@ type Source struct {
 	lastError atomic.Value
 }
 
-// Hack hack to avoid panics on atomic.Value
+// Hack-hack to avoid panics on atomic.Value
 type packedError struct {
 	err error
 }
