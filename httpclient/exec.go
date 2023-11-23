@@ -8,36 +8,33 @@ import (
 	"net"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // -----------------------------------------------------------------------------
 
 const (
-	defaultTimeout = 20 * time.Second
-
 	errUnableToExecuteRequest = "failed to execute http request"
 	errNoAvailableServer      = "no available upstream server"
 )
 
 // -----------------------------------------------------------------------------
 
-func (c *HttpClient) exec(parentCtx context.Context, cb ExecCallback, req *Request) error {
-	var httpreq *http.Request
+func (c *HttpClient) exec(req *Request) error {
+	var httpReq *http.Request
 	var getBody func() io.ReadCloser
 	var err error
 
 	// Define a body getter to return multiple copies of the reader to be used in retries.
-	if req.Body == nil {
+	if req.body == nil {
 		// If no body, getter will return nil
 		getBody = func() io.ReadCloser {
 			return nil
 		}
 	} else {
 		// Convert to a ReadCloser if just a reader
-		rc, ok := req.Body.(io.ReadCloser)
+		rc, ok := req.body.(io.ReadCloser)
 		if !ok {
-			rc = io.NopCloser(req.Body)
+			rc = io.NopCloser(req.body)
 		}
 
 		// Defer close of the original body
@@ -46,7 +43,7 @@ func (c *HttpClient) exec(parentCtx context.Context, cb ExecCallback, req *Reque
 		}()
 
 		// Set up a body reader cloning function
-		switch v := req.Body.(type) {
+		switch v := req.body.(type) {
 		case *bytes.Buffer:
 			buf := v.Bytes()
 			getBody = func() io.ReadCloser {
@@ -79,21 +76,20 @@ func (c *HttpClient) exec(parentCtx context.Context, cb ExecCallback, req *Reque
 	// Loop
 	for {
 		var netErr net.Error
-		var cancelCtx context.CancelFunc
 
 		// Get next available server
 		srv := c.lb.Next()
 		if srv == nil {
-			return c.newError(nil, errNoAvailableServer, req.Resource, 0)
+			return c.newError(nil, errNoAvailableServer, req.url, 0)
 		}
 
 		src := srv.UserData().(*Source)
 
 		// Create the final url
-		url := src.baseURL + req.Resource
+		url := src.baseURL + req.url
 
 		// Create a new http request
-		httpreq, err = http.NewRequest(req.Method, url, getBody())
+		httpReq, err = http.NewRequest(req.method, url, getBody())
 		if err != nil {
 			err = c.newError(err, errUnableToExecuteRequest, url, 0)
 			src.setLastError(err)
@@ -101,15 +97,17 @@ func (c *HttpClient) exec(parentCtx context.Context, cb ExecCallback, req *Reque
 		}
 
 		// Add load balancer source headers
-		httpreq.Header = src.header.Clone()
+		httpReq.Header = src.header.Clone()
 
 		// Add request headers
-		for k, v := range req.Header {
-			vLen := len(v)
-			if vLen > 0 {
-				httpreq.Header.Set(k, v[0])
-				for vIdx := 1; vIdx < vLen; vIdx++ {
-					httpreq.Header.Add(k, v[vIdx])
+		if req.headers != nil {
+			for k, v := range req.headers {
+				vLen := len(v)
+				if vLen > 0 {
+					httpReq.Header.Set(k, v[0])
+					for vIdx := 1; vIdx < vLen; vIdx++ {
+						httpReq.Header.Add(k, v[vIdx])
+					}
 				}
 			}
 		}
@@ -117,13 +115,6 @@ func (c *HttpClient) exec(parentCtx context.Context, cb ExecCallback, req *Reque
 		// Create http client requester
 		client := http.Client{
 			Transport: c.transport,
-		}
-
-		// Establish a new context with a default timeout if a deadline is not present
-		ctx := parentCtx
-		cancelCtx = nil
-		if _, hasDeadline := parentCtx.Deadline(); !hasDeadline {
-			ctx, cancelCtx = context.WithTimeout(parentCtx, defaultTimeout)
 		}
 
 		// Build callback info
@@ -137,8 +128,11 @@ func (c *HttpClient) exec(parentCtx context.Context, cb ExecCallback, req *Reque
 			retry:           &retry,
 		}
 
+		// Establish a new context with the timeout
+		ctx, cancelCtx := context.WithTimeout(req.ctx, req.timeout)
+
 		// Execute real request
-		execResult.Response, err = client.Do(httpreq.WithContext(ctx))
+		execResult.Response, err = client.Do(httpReq.WithContext(ctx))
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
 				// Deadline exceeded?
@@ -163,7 +157,7 @@ func (c *HttpClient) exec(parentCtx context.Context, cb ExecCallback, req *Reque
 		execResult.err = err
 
 		// Call the callback
-		err = cb(parentCtx, execResult)
+		err = req.callback(ctx, execResult)
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
 				err = ErrTimeout
@@ -175,9 +169,7 @@ func (c *HttpClient) exec(parentCtx context.Context, cb ExecCallback, req *Reque
 		}
 
 		// To avoid defer calling inside a for loop and warnings, we call it here
-		if cancelCtx != nil {
-			cancelCtx()
-		}
+		cancelCtx()
 
 		// Close the response body if one exist
 		if execResult.Response != nil {

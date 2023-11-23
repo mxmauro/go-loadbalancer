@@ -10,7 +10,7 @@ The base code of this library, the balancer, *DOES NOT DO* any kind of network a
 import (
     "time"
 
-    balancer "github.com/randlabs/go-loadbalancer"
+    balancer "github.com/randlabs/go-loadbalancer/v2"
 )
 
 type ServerInfo struct {
@@ -100,7 +100,7 @@ requests among them.
 import (
     "fmt"
 
-    balancer "github.com/randlabs/go-loadbalancer"
+    balancer "github.com/randlabs/go-loadbalancer/v2"
 )
 
 func main() {
@@ -120,20 +120,22 @@ func main() {
         },
     })
 
-    req := hc.NewRequest("GET", "/api-test")
-    err := req.Exec(context.Background(), func (ctx context.Context, res httpclient.Response) error {
-        if res.Err() != nil || res.StatusCode != 200 {
-            // Retry on the next available server on failed request
-            res.RetryOnNextServer()
+    err := hc.NewRequest(context.Background(), "/api-test").
+        Method("GET").
+        Callback(func (ctx context.Context, res httpclient.Response) error {
+            if res.Err() != nil || res.StatusCode != 200 {
+                // Retry on the next available server on failed request
+                res.RetryOnNextServer()
+                return nil
+            }
+
+            // Process response
+            // ...
+
+            // Done
             return nil
-        }
-
-        // Process response
-        // ...
-
-        // Done
-        return nil
-    })
+        }).
+        Exec()
 }
 ```
 

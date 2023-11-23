@@ -3,50 +3,102 @@ package httpclient
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
+	"time"
+)
+
+// -----------------------------------------------------------------------------
+
+const (
+	defaultTimeout = 20 * time.Second
 )
 
 // -----------------------------------------------------------------------------
 
 // Request represents a load-balanced http client request object.
 type Request struct {
-	Method   string
-	Resource string
-	Header   http.Header
-	Body     io.Reader
-
-	client   *HttpClient
+	method  string
+	url     string
+	headers http.Header
+	body    io.Reader
+	ctx context.Context
+	timeout time.Duration
+	callback ExecCallback
+	client  *HttpClient
 }
 
 // -----------------------------------------------------------------------------
 
 // NewRequest creates a new http client request
-func (c *HttpClient) NewRequest(method string, resourceUrl string) *Request {
+func (c *HttpClient) NewRequest(ctx context.Context, url string) *Request {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	req := Request{
-		client:   c,
-		Method:   method,
-		Resource: resourceUrl,
-		Header:   make(http.Header),
+		ctx:     ctx,
+		client:  c,
+		timeout: defaultTimeout,
+		method:  "GET",
+		url:     url,
 	}
 	return &req
 }
 
-// SetBody sets the body of a http client request
-func (req *Request) SetBody(body io.Reader) {
-	req.Body = body
+// Method sets the http client request method to use
+func (req *Request) Method(method string) *Request {
+	req.method = method
+	return req
 }
 
-// SetBodyBytes sets the body of a http client request
-func (req *Request) SetBodyBytes(body []byte) {
+// Headers sets the headers of a http client request
+func (req *Request) Headers(headers http.Header) *Request {
+	req.headers = headers
+	return req
+}
+
+// Body sets the body of a http client request
+func (req *Request) Body(body io.Reader) *Request {
+	req.body = body
+	return req
+}
+
+// BodyBytes sets the body of a http client request
+func (req *Request) BodyBytes(body []byte) *Request {
 	if body != nil {
-		req.SetBody(bytes.NewReader(body))
+		req.body = bytes.NewReader(body)
 	} else {
-		req.Body = nil
+		req.body = nil
 	}
+	return req
+}
+
+// Timeout sets the request timeout
+func (req *Request) Timeout(timeout time.Duration) *Request {
+	req.timeout = timeout
+	return req
+}
+
+// Callback sets the execution callback
+func (req *Request) Callback(cb ExecCallback) *Request {
+	req.callback = cb
+	return req
 }
 
 // Exec runs the http client request
-func (req *Request) Exec(ctx context.Context, cb ExecCallback) error {
-	return req.client.exec(ctx, cb, req)
+func (req *Request) Exec() error {
+	if len(req.method) == 0 {
+		return errors.New("invalid method")
+	}
+	if len(req.url) == 0 {
+		return errors.New("invalid url")
+	}
+	if req.timeout < 0 {
+		return errors.New("invalid timeout")
+	}
+	if req.callback == nil {
+		return errors.New("invalid callback")
+	}
+	return req.client.exec(req)
 }

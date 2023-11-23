@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/randlabs/go-loadbalancer"
+	"github.com/randlabs/go-loadbalancer/v2"
 )
 
 // -----------------------------------------------------------------------------
