@@ -78,6 +78,9 @@ func (c *HttpClient) exec(parentCtx context.Context, cb ExecCallback, req *Reque
 
 	// Loop
 	for {
+		var netErr net.Error
+		var cancelCtx context.CancelFunc
+
 		// Get next available server
 		srv := c.lb.Next()
 		if srv == nil {
@@ -118,7 +121,7 @@ func (c *HttpClient) exec(parentCtx context.Context, cb ExecCallback, req *Reque
 
 		// Establish a new context with a default timeout if a deadline is not present
 		ctx := parentCtx
-		var cancelCtx context.CancelFunc
+		cancelCtx = nil
 		if _, hasDeadline := parentCtx.Deadline(); !hasDeadline {
 			ctx, cancelCtx = context.WithTimeout(parentCtx, defaultTimeout)
 		}
@@ -137,26 +140,17 @@ func (c *HttpClient) exec(parentCtx context.Context, cb ExecCallback, req *Reque
 		// Execute real request
 		execResult.Response, err = client.Do(httpreq.WithContext(ctx))
 		if err != nil {
-			var netErr net.Error
-
 			if errors.Is(err, context.DeadlineExceeded) {
 				// Deadline exceeded?
-				if cancelCtx != nil {
-					cancelCtx() // To avoid defer calling inside a for loop and warnings, we call it here
-				}
-				return ErrTimeout
-			}
-			if errors.As(err, &netErr); netErr.Timeout() {
+				err = ErrTimeout
+			} else if errors.As(err, &netErr) && netErr.Timeout() {
 				// Network timeout?
 				srv.SetOffline()
 
 				err = ErrTimeout
 			} else if errors.Is(err, context.Canceled) {
 				// Canceled?
-				if cancelCtx != nil {
-					cancelCtx() // To avoid defer calling inside a for loop and warnings, we call it here
-				}
-				return ErrCanceled
+				err = ErrCanceled
 			} else {
 				// Other type of error
 				srv.SetOffline()
@@ -170,6 +164,15 @@ func (c *HttpClient) exec(parentCtx context.Context, cb ExecCallback, req *Reque
 
 		// Call the callback
 		err = cb(parentCtx, execResult)
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				err = ErrTimeout
+			} else if errors.As(err, &netErr) && netErr.Timeout() {
+				err = ErrTimeout
+			} else if errors.Is(err, context.Canceled) {
+				err = ErrCanceled
+			}
+		}
 
 		// To avoid defer calling inside a for loop and warnings, we call it here
 		if cancelCtx != nil {
@@ -184,7 +187,7 @@ func (c *HttpClient) exec(parentCtx context.Context, cb ExecCallback, req *Reque
 		// Set the last error (even success)
 		src.setLastError(err)
 
-		// Raise callbak
+		// Raise callback
 		c.raiseRequestEvent(srv, err)
 
 		// Set server online/offline based on the callback response
