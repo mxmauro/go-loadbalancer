@@ -2,7 +2,13 @@
 
 A round-robin server selection (aka load balancer) library.
 
-The base code of this library, the balancer, *DOES NOT DO* any kind of network access. It's goal is to automatically select an upstream handler in a set of primary and backup configured servers.
+The base code of this library, the balancer, **DOES NOT** execute any kind of network access. It's goal is to
+automatically select an upstream handler in a set of primary and backup configured servers.
+
+##### NOTE:
+
+* This is a fork of the original [RandLabs.IO's load balancer library](https://github.com/randlabs/go-loadbalancer).
+  May contain some modified functionality.
 
 ## Usage with example
 
@@ -10,7 +16,7 @@ The base code of this library, the balancer, *DOES NOT DO* any kind of network a
 import (
     "time"
 
-    balancer "github.com/randlabs/go-loadbalancer/v2"
+    balancer "github.com/mxmauro/go-loadbalancer/v2"
 )
 
 type ServerInfo struct {

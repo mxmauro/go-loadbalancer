@@ -1,3 +1,5 @@
+// See the LICENSE file for license details.
+
 package httpclient_test
 
 import (
@@ -12,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/randlabs/go-loadbalancer/v2"
-	"github.com/randlabs/go-loadbalancer/v2/httpclient"
+	"github.com/mxmauro/go-loadbalancer/v2"
+	"github.com/mxmauro/go-loadbalancer/v2/httpclient"
 )
 
 // -----------------------------------------------------------------------------

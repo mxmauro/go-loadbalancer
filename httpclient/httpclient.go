@@ -1,3 +1,5 @@
+// See the LICENSE file for license details.
+
 package httpclient
 
 import (
@@ -7,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/randlabs/go-loadbalancer/v2"
+	"github.com/mxmauro/go-loadbalancer/v2"
 )
 
 // -----------------------------------------------------------------------------

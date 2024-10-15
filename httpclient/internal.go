@@ -1,9 +1,11 @@
+// See the LICENSE file for license details.
+
 package httpclient
 
 import (
 	"errors"
 
-	"github.com/randlabs/go-loadbalancer/v2"
+	"github.com/mxmauro/go-loadbalancer/v2"
 )
 
 // -----------------------------------------------------------------------------
